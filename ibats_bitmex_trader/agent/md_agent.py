@@ -13,12 +13,12 @@ from queue import Queue
 from ibats_trader.md import MdAgentBase, register_backtest_md_agent, register_realtime_md_agent
 from ibats_common.utils.mess import bytes_2_str
 from ibats_common.common import PeriodType
-from backend import engine_md
-from abat.utils.redis import get_redis, get_channel
-from backend.orm import MDMin1
-from abat.utils.db_utils import with_db_session
+from ibats_bitmex_trader.backend import engine_md
+from ibats_common.utils.redis import get_redis, get_channel
+from ibats_bitmex_trader.backend.orm import MDMin1
+from ibats_common.utils.db import with_db_session
 import pandas as pd
-from config import Config
+from ibats_bitmex_trader.config import config
 
 
 class MdAgentPub(MdAgentBase):
@@ -38,14 +38,10 @@ class MdAgentPub(MdAgentBase):
         """
         # 如果 init_md_date_from 以及 init_md_date_to 为空，则不加载历史数据
         if self.init_md_date_from is None and self.init_md_date_to is None:
-            ret_data = {'md_df': None, 'datetime_key': 'ts_start'}
+            ret_data = {'md_df': None, 'datetime_key': 'timestamp'}
             return ret_data
 
-        if self.md_period == PeriodType.Tick:
-            sql_str = """SELECT * FROM md_tick
-                        WHERE InstrumentID IN (%s) %s
-                        ORDER BY ActionDay DESC, ActionTime DESC, ActionMillisec DESC %s"""
-        elif self.md_period == PeriodType.Min1:
+        if self.md_period == PeriodType.Min1:
             # 将sql 语句形势改成由 sqlalchemy 进行sql 拼装方式
             # sql_str = """select * from md_min_1
             #     where InstrumentID in ('j1801') and tradingday>='2017-08-14'
@@ -129,7 +125,7 @@ class MdAgentRealtime(MdAgentPub):
             instrument_id_set = self.instrument_id_set
         # channel_head = Config.REDIS_CHANNEL[self.md_period]
         # channel_list = [channel_head + instrument_id for instrument_id in instrument_id_set]
-        channel_list = [get_channel(Config.MARKET_NAME, self.md_period, instrument_id)
+        channel_list = [get_channel(config.MARKET_NAME, self.md_period, instrument_id)
                         for instrument_id in instrument_id_set]
         self.pub_sub.psubscribe(*channel_list)
 
@@ -158,9 +154,9 @@ class MdAgentRealtime(MdAgentPub):
         else:
             super().unsubscribe(instrument_id_set)
 
-        # channel_head = Config.REDIS_CHANNEL[self.md_period]
+        # channel_head = config.REDIS_CHANNEL[self.md_period]
         # channel_list = [channel_head + instrument_id for instrument_id in instrument_id_set]
-        channel_list = [get_channel(Config.MARKET_NAME, self.md_period, instrument_id)
+        channel_list = [get_channel(config.MARKET_NAME, self.md_period, instrument_id)
                         for instrument_id in instrument_id_set]
         if self.pub_sub is not None:  # 在回测模式下有可能不进行 connect 调用以及 subscribe 订阅，因此，没有 pub_sub 实例
             self.pub_sub.punsubscribe(*channel_list)

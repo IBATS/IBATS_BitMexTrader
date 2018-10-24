@@ -15,12 +15,14 @@ class ConfigBase:
     MARKET_NAME = '***'
 
     # api configuration
-    EXCHANGE_ACCESS_KEY = ""
-    EXCHANGE_SECRET_KEY = ""
+    # https://testnet.bitmex.com/app/apiKeys
+    TEST_NET = True
+    EXCHANGE_PUBLIC_KEY = "K5DaKlClbXg_TQn5lEGOswd8"
+    EXCHANGE_SECRET_KEY = "QQwPpUpCUcJwtqFIsDXevMqhEPUM3eanZUnzlSpYGqaLIbph"
 
     # mysql db info
     DB_SCHEMA_IBATS = 'ibats'
-    DB_SCHEMA_MD = 'bc_md'
+    DB_SCHEMA_MD = 'md_bitmex'
     DB_URL_DIC = {
         DB_SCHEMA_MD: 'mysql://mg:****@localhost/' + DB_SCHEMA_MD,
         DB_SCHEMA_IBATS: 'mysql://mg:****@localhost/' + DB_SCHEMA_IBATS,

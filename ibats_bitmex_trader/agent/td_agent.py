@@ -6,23 +6,20 @@ Created on 2017/10/3
 import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta, date
-from huobitrade import setKey
-from abat.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
-from config import Config
-from abat.utils.db_utils import with_db_session
-from abat.backend import engine_abat
-from abat.common import Direction, Action, BacktestTradeMode, PositionDateType
-from abat.utils.fh_utils import try_n_times, ceil, floor
-from abat.trade import TraderAgent, register_backtest_trader_agent, register_realtime_trader_agent
-from huobitrade.service import HBRestAPI
-from backend import engine_md
-from backend.orm import SymbolPair
+from ibats_trader.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
+from ibats_bitmex_trader.config import config
+from ibats_common.utils.db import with_db_session, get_db_session
+from ibats_trader.backend import engine_abat
+from ibats_common.common import Direction, Action, BacktestTradeMode, PositionDateType
+from ibats_common.utils.mess import try_n_times, ceil, floor
+from ibats_trader.trade import TraderAgent, register_backtest_trader_agent, register_realtime_trader_agent
+from ibats_bitmex_feeder.backend import engine_md
+from ibats_bitmex_feeder.backend.orm import dynamic_load_table_model, instrument_info_table
+from bitmex import bitmex
 from collections import defaultdict
 from enum import Enum
 
 logger = logging.getLogger()
-# 设置秘钥
-setKey(Config.EXCHANGE_ACCESS_KEY, Config.EXCHANGE_SECRET_KEY)
 
 
 class OrderType(Enum):
@@ -136,7 +133,7 @@ class BacktestTraderAgent(TraderAgent):
                                             available_cash=init_cash,
                                             balance_tot=init_cash,
                                             )
-        if Config.UPDATE_OR_INSERT_PER_ACTION:
+        if config.UPDATE_OR_INSERT_PER_ACTION:
             # 更新最新持仓纪录
             with with_db_session(engine_abat, expire_on_commit=False) as session:
                 session.add(acc_status_info)
@@ -191,7 +188,7 @@ class BacktestTraderAgent(TraderAgent):
         account_status_info.trade_date = trade_date
         account_status_info.trade_time = trade_time
         account_status_info.trade_millisec = trade_millisec
-        if Config.UPDATE_OR_INSERT_PER_ACTION:
+        if config.UPDATE_OR_INSERT_PER_ACTION:
             # 更新最新持仓纪录
             with with_db_session(engine_abat, expire_on_commit=False) as session:
                 session.add(account_status_info)
@@ -214,7 +211,7 @@ class BacktestTraderAgent(TraderAgent):
         pos_status_info.trade_millisec = trade_millisec
 
         # 计算 floating_pl margin
-        # instrument_info = Config.instrument_info_dic[instrument_id]
+        # instrument_info = config.instrument_info_dic[instrument_id]
         # multiple = instrument_info['VolumeMultiple']
         # margin_ratio = instrument_info['LongMarginRatio']
         multiple, margin_ratio = 1, 1
@@ -230,7 +227,7 @@ class BacktestTraderAgent(TraderAgent):
         pos_status_info.floating_pl_chg = pos_status_info.floating_pl - pos_status_info_last.floating_pl
         pos_status_info.floating_pl_cum += pos_status_info.floating_pl_chg
 
-        if Config.UPDATE_OR_INSERT_PER_ACTION:
+        if config.UPDATE_OR_INSERT_PER_ACTION:
             # 更新最新持仓纪录
             with with_db_session(engine_abat, expire_on_commit=False) as session:
                 session.add(pos_status_info)
@@ -327,7 +324,7 @@ class BacktestTraderAgent(TraderAgent):
 
     def get_balance(self):
         position_date_pos_info_dic = {key: {PositionDateType.History: pos_status_info}
-         for key, pos_status_info in self._pos_status_info_dic.items()}
+                                      for key, pos_status_info in self._pos_status_info_dic.items()}
         return position_date_pos_info_dic
 
 
@@ -339,7 +336,8 @@ class RealTimeTraderAgent(TraderAgent):
 
     def __init__(self, stg_run_id, run_mode_params: dict):
         super().__init__(stg_run_id, run_mode_params)
-        self.trader_api = HBRestAPI()
+        self.trader_api = bitmex(test=config.TEST_NET,
+                                 api_key=config.EXCHANGE_PUBLIC_KEY, api_secret=config.EXCHANGE_SECRET_KEY)
         self.currency_balance_dic = {}
         self.currency_balance_last_get_datetime = None
         self.symbol_currency_dic = None
@@ -348,14 +346,21 @@ class RealTimeTraderAgent(TraderAgent):
         self._datetime_last_update_position_dic = {}
 
     def connect(self):
+        if instrument_info_table is None:
+            raise EnvironmentError("instrument_info_table 为 None，请先加载 dynamic_load_table_model 再重新 import")
         with with_db_session(engine_md) as session:
-            data = session.query(SymbolPair).all()
+            data = session.query(
+                instrument_info_table.columns['symbol'],
+                instrument_info_table.columns['underlying'],
+                instrument_info_table.columns['tickSize'],
+            ).filter(instrument_info_table.c.state == 'open').all()
             self.symbol_currency_dic = {
-                f'{sym.base_currency}{sym.quote_currency}': sym.base_currency
-                for sym in data}
+                row[0]: row[1]
+                for row in data}
             self.symbol_precision_dic = {
-                f'{sym.base_currency}{sym.quote_currency}': (int(sym.price_precision), int(sym.amount_precision))
-                for sym in data}
+                # row[0]: (int(sym.price_precision), int(sym.amount_precision))
+                row[0]: row[2]
+                for row in data}
 
     # @try_n_times(times=3, sleep_time=2, logger=logger)
     def open_long(self, symbol, price, vol):
