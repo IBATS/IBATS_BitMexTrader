@@ -11,10 +11,9 @@ from ibats_bitmex_trader.config import config
 from ibats_common.utils.db import with_db_session, get_db_session
 from ibats_trader.backend import engine_ibats
 from ibats_common.common import Direction, Action, BacktestTradeMode, PositionDateType
-from ibats_common.utils.mess import try_n_times, ceil, floor
 from ibats_trader.trade import TraderAgent, register_backtest_trader_agent, register_realtime_trader_agent
 from ibats_bitmex_feeder.backend import engine_md
-from ibats_bitmex_feeder.backend.orm import dynamic_load_table_model, instrument_info_table
+from ibats_bitmex_feeder.backend.other_tables import instrument_info_table
 from bitmex import bitmex
 from collections import defaultdict
 from enum import Enum
