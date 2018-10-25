@@ -18,6 +18,7 @@ from ibats_bitmex_feeder.backend.orm import dynamic_load_table_model, instrument
 from bitmex import bitmex
 from collections import defaultdict
 from enum import Enum
+import math
 
 logger = logging.getLogger()
 
@@ -365,37 +366,60 @@ class RealTimeTraderAgent(TraderAgent):
     # @try_n_times(times=3, sleep_time=2, logger=logger)
     def open_long(self, symbol, price, vol):
         """买入多头"""
-        price_precision, amount_precision = self.symbol_precision_dic[symbol]
+        # 0.5 XBTUSD 100 XBTJPY 最小价格变动单位
+        price_precision, amount_precision = self.symbol_precision_dic[symbol], 1
         if isinstance(price, float):
-            price = format(price, f'.{price_precision}f')
+            # 剔除价格后面的尾数
+            price = price - price % price_precision
         if isinstance(vol, float):
-            if vol < 10 ** -amount_precision:
+            if vol < 1:
                 logger.warning('%s open_long 订单量 %f 太小，忽略', symbol, vol)
                 return
-            vol = format(floor(vol, amount_precision), f'.{amount_precision}f')
-        self.trader_api.send_order(vol, symbol, OrderType.buy_limit.value, price)
+            vol = math.ceil(vol)
+        result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Buy', orderQty=vol, price=price).result()
         self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
     def close_long(self, symbol, price, vol):
         """卖出多头"""
-        price_precision, amount_precision = self.symbol_precision_dic[symbol]
+        price_precision, amount_precision = self.symbol_precision_dic[symbol], 1
         if isinstance(price, float):
-            price = format(price, f'.{price_precision}f')
+            # 剔除价格后面的尾数
+            price = price - price % price_precision
         if isinstance(vol, float):
-            if vol < 10 ** -amount_precision:
-                logger.warning('%s close_long 订单量 %f 太小，忽略', symbol, vol)
+            if vol < 1:
+                logger.warning('%s open_long 订单量 %f 太小，忽略', symbol, vol)
                 return
-            vol = format(floor(vol, amount_precision), f'.{amount_precision}f')
-        self.trader_api.send_order(vol, symbol, OrderType.sell_limit.value, price)
+            vol = math.ceil(vol)
+        result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Sell', orderQty=vol, price=price).result()
         self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
     def open_short(self, instrument_id, price, vol):
-        # self.trader_api.open_short(instrument_id, price, vol)
-        raise NotImplementedError()
+        """开空单"""
+        price_precision, amount_precision = self.symbol_precision_dic[symbol], 1
+        if isinstance(price, float):
+            # 剔除价格后面的尾数
+            price = price - price % price_precision
+        if isinstance(vol, float):
+            if vol < 1:
+                logger.warning('%s open_long 订单量 %f 太小，忽略', symbol, vol)
+                return
+            vol = math.ceil(vol)
+        result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Sell', orderQty=vol, price=price).result()
+        self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
     def close_short(self, instrument_id, price, vol):
-        # self.trader_api.close_short(instrument_id, price, vol)
-        raise NotImplementedError()
+        """平空单"""
+        price_precision, amount_precision = self.symbol_precision_dic[symbol], 1
+        if isinstance(price, float):
+            # 剔除价格后面的尾数
+            price = price - price % price_precision
+        if isinstance(vol, float):
+            if vol < 1:
+                logger.warning('%s open_long 订单量 %f 太小，忽略', symbol, vol)
+                return
+            vol = math.ceil(vol)
+        result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Buy', orderQty=vol, price=price).result()
+        self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
     def get_position(self, instrument_id, force_refresh=False) -> dict:
         """
@@ -434,28 +458,27 @@ class RealTimeTraderAgent(TraderAgent):
         """
         if force_refresh or self.currency_balance_last_get_datetime is None or \
                 self.currency_balance_last_get_datetime < datetime.now() - timedelta(seconds=30):
-            ret_data = self.trader_api.get_balance()
-            acc_balance = ret_data['data']['list']
-            self.logger.debug('更新持仓数据： %d 条', len(acc_balance))
+            # trader_api.Position.Position_get
+            # result, _ = self.trader_api.Position.Position_get().result()
+            result, _ = self.trader_api.User.User_getWallet().result()
+            self.logger.debug('更新持仓数据： %d 条', len(result))
             acc_balance_new_dic = defaultdict(dict)
-            for balance_dic in acc_balance:
-                currency_curr = balance_dic['currency']
+            for data_dic in result:
+                currency_curr = data_dic['currency']
                 self._datetime_last_update_position_dic[currency_curr] = datetime.now()
 
-                if non_zero_only and balance_dic['balance'] == '0':
+                if non_zero_only and data_dic['amount'] == '0':
                     continue
 
-                if trade_type_only and balance_dic['type'] != 'trade':
-                    continue
-                balance_dic['balance'] = float(balance_dic['balance'])
-                # self.logger.debug(balance_dic)
+                data_dic['amount'] = float(data_dic['amount'])
+                # self.logger.debug(data_dic)
                 if PositionDateType.History in acc_balance_new_dic[currency_curr]:
                     balance_dic_old = acc_balance_new_dic[currency_curr][PositionDateType.History]
-                    balance_dic_old['balance'] += balance_dic['balance']
+                    balance_dic_old['balance'] += data_dic['balance']
                     # TODO: 日后可以考虑将 PositionDateType.History 替换为 type
-                    acc_balance_new_dic[currency_curr][PositionDateType.History] = balance_dic
+                    acc_balance_new_dic[currency_curr][PositionDateType.History] = data_dic
                 else:
-                    acc_balance_new_dic[currency_curr] = {PositionDateType.History: balance_dic}
+                    acc_balance_new_dic[currency_curr] = {PositionDateType.History: data_dic}
 
             self.currency_balance_dic = acc_balance_new_dic
             self.currency_balance_last_get_datetime = datetime.now()
