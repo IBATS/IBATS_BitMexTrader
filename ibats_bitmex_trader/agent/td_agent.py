@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, date
 from ibats_trader.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
 from ibats_bitmex_trader.config import config
 from ibats_common.utils.db import with_db_session, get_db_session
-from ibats_trader.backend import engine_abat
+from ibats_trader.backend import engine_ibats
 from ibats_common.common import Direction, Action, BacktestTradeMode, PositionDateType
 from ibats_common.utils.mess import try_n_times, ceil, floor
 from ibats_trader.trade import TraderAgent, register_backtest_trader_agent, register_realtime_trader_agent
@@ -80,7 +80,7 @@ class BacktestTraderAgent(TraderAgent):
                                order_vol=int(vol)
                                )
         if False:  # 暂时不用
-            with with_db_session(engine_abat, expire_on_commit=False) as session:
+            with with_db_session(engine_ibats, expire_on_commit=False) as session:
                 session.add(order_info)
                 session.commit()
         self.order_info_list.append(order_info)
@@ -135,7 +135,7 @@ class BacktestTraderAgent(TraderAgent):
                                             )
         if config.UPDATE_OR_INSERT_PER_ACTION:
             # 更新最新持仓纪录
-            with with_db_session(engine_abat, expire_on_commit=False) as session:
+            with with_db_session(engine_ibats, expire_on_commit=False) as session:
                 session.add(acc_status_info)
                 session.commit()
         return acc_status_info
@@ -190,7 +190,7 @@ class BacktestTraderAgent(TraderAgent):
         account_status_info.trade_millisec = trade_millisec
         if config.UPDATE_OR_INSERT_PER_ACTION:
             # 更新最新持仓纪录
-            with with_db_session(engine_abat, expire_on_commit=False) as session:
+            with with_db_session(engine_ibats, expire_on_commit=False) as session:
                 session.add(account_status_info)
                 session.commit()
         return account_status_info
@@ -229,7 +229,7 @@ class BacktestTraderAgent(TraderAgent):
 
         if config.UPDATE_OR_INSERT_PER_ACTION:
             # 更新最新持仓纪录
-            with with_db_session(engine_abat, expire_on_commit=False) as session:
+            with with_db_session(engine_ibats, expire_on_commit=False) as session:
                 session.add(pos_status_info)
                 session.commit()
         return pos_status_info
@@ -307,7 +307,7 @@ class BacktestTraderAgent(TraderAgent):
 
     def release(self):
         try:
-            with with_db_session(engine_abat) as session:
+            with with_db_session(engine_ibats) as session:
                 session.add_all(self.order_info_list)
                 session.add_all(self.trade_info_list)
                 session.add_all(self.pos_status_info_dic.values())
