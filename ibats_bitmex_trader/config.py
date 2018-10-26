@@ -5,27 +5,26 @@ Created on 2017/6/9
 """
 import logging
 from logging.config import dictConfig
-from ibats_trader.config import update_config
-
+from ibats_common.config import ConfigBase as ConBase
+from ibats_common.common import ExchangeName
 logger = logging.getLogger()
 
 
-class ConfigBase:
+class ConfigBase(ConBase):
     # 交易所名称
-    MARKET_NAME = '***'
+    MARKET_NAME = ExchangeName.BitMex.name
 
     # api configuration
     # https://testnet.bitmex.com/app/apiKeys
     TEST_NET = True
-    EXCHANGE_PUBLIC_KEY = "K5DaKlClbXg_TQn5lEGOswd8"
-    EXCHANGE_SECRET_KEY = "QQwPpUpCUcJwtqFIsDXevMqhEPUM3eanZUnzlSpYGqaLIbph"
+    EXCHANGE_PUBLIC_KEY = "kRGATSGD9QRhSRvY0Ih58t5z"
+    EXCHANGE_SECRET_KEY = "tYJwFJeFe5SxzWETFEvoI_HxDaUbtF2fCNwxXd8SZyPNL-1J"
 
     # mysql db info
-    DB_SCHEMA_IBATS = 'ibats'
     DB_SCHEMA_MD = 'md_bitmex'
     DB_URL_DIC = {
         DB_SCHEMA_MD: 'mysql://mg:****@localhost/' + DB_SCHEMA_MD,
-        DB_SCHEMA_IBATS: 'mysql://mg:****@localhost/' + DB_SCHEMA_IBATS,
+        ConBase.DB_SCHEMA_IBATS: 'mysql://mg:****@localhost/' + ConBase.DB_SCHEMA_IBATS,
     }
 
     # redis info
@@ -33,53 +32,15 @@ class ConfigBase:
                       'REDIS_PORT': '6379',
                       }
 
-    # evn configuration
-    LOG_FORMAT = '%(asctime)s %(levelname)s %(name)s %(filename)s.%(funcName)s:%(lineno)d|%(message)s'
-
     # 每一次实务均产生数据库插入或更新动作（默认：否）
     UPDATE_OR_INSERT_PER_ACTION = False
-
-    # log settings
-    logging_config = dict(
-        version=1,
-        formatters={
-            'simple': {
-                'format': LOG_FORMAT}
-        },
-        handlers={
-            'file_handler':
-                {
-                    'class': 'logging.handlers.RotatingFileHandler',
-                    'filename': 'logger.log',
-                    'maxBytes': 1024 * 1024 * 10,
-                    'backupCount': 5,
-                    'level': 'DEBUG',
-                    'formatter': 'simple',
-                    'encoding': 'utf8'
-                },
-            'console_handler':
-                {
-                    'class': 'logging.StreamHandler',
-                    'level': 'DEBUG',
-                    'formatter': 'simple'
-                }
-        },
-
-        root={
-            'handlers': ['console_handler', 'file_handler'],
-            'level': logging.DEBUG,
-        }
-    )
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARN)
-    logging.getLogger('urllib3.connectionpool').setLevel(logging.INFO)
-    dictConfig(logging_config)
 
 
 # 开发配置（SIMNOW MD + Trade）
 config = ConfigBase()
-# 测试配置（测试行情库）
-# Config = ConfigTest()
-# 生产配置
-# Config = ConfigProduct()
 
-update_config(config)
+
+def update_config(config_update: ConfigBase):
+    global config
+    config = config_update
+    logger.info('更新默认配置信息 %s < %s', ConfigBase, config_update)
