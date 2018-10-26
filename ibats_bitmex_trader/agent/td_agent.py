@@ -6,12 +6,12 @@ Created on 2017/10/3
 import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta, date
-from ibats_trader.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
+from ibats_common.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
 from ibats_bitmex_trader.config import config
 from ibats_common.utils.db import with_db_session, get_db_session
-from ibats_trader.backend import engine_ibats
-from ibats_common.common import Direction, Action, BacktestTradeMode, PositionDateType
-from ibats_trader.trade import TraderAgent, register_backtest_trader_agent, register_realtime_trader_agent
+from ibats_common.backend import engine_ibats
+from ibats_common.common import Direction, Action, BacktestTradeMode, PositionDateType, RunMode, ExchangeName
+from ibats_common.trade import TraderAgentBase, trader_agent
 from ibats_bitmex_feeder.backend import engine_md
 from ibats_bitmex_feeder.backend.other_tables import instrument_info_table
 from bitmex import bitmex
@@ -34,8 +34,8 @@ class OrderType(Enum):
     sell_ioc = 'sell-ioc'
 
 
-@register_backtest_trader_agent
-class BacktestTraderAgent(TraderAgent):
+@trader_agent(RunMode.Backtest, ExchangeName.BitMex, is_default=False)
+class BacktestTraderAgent(TraderAgentBase):
     """
     供调用模拟交易接口使用
     """
@@ -54,7 +54,7 @@ class BacktestTraderAgent(TraderAgent):
         self.trade_info_list = []
         self.pos_status_info_dic = OrderedDict()
         self.account_info_list = []
-        # 持仓信息 初始化持仓状态字典，key为 instrument_id
+        # 持仓信息 初始化持仓状态字典，key为 symbol
         self._pos_status_info_dic = {}
         self._order_info_dic = {}
         # 账户信息
@@ -67,7 +67,7 @@ class BacktestTraderAgent(TraderAgent):
     def connect(self):
         pass
 
-    def _save_order_info(self, instrument_id, price: float, vol: int, direction: Direction, action: Action):
+    def _save_order_info(self, symbol, price: float, vol: int, direction: Direction, action: Action):
         order_date = self.curr_md['ts_start'].date()
         order_info = OrderInfo(stg_run_id=self.stg_run_id,
                                order_date=order_date,
@@ -75,7 +75,7 @@ class BacktestTraderAgent(TraderAgent):
                                order_millisec=0,
                                direction=int(direction),
                                action=int(action),
-                               instrument_id=instrument_id,
+                               instrument_id=symbol,
                                order_price=float(price),
                                order_vol=int(vol)
                                )
@@ -84,7 +84,7 @@ class BacktestTraderAgent(TraderAgent):
                 session.add(order_info)
                 session.commit()
         self.order_info_list.append(order_info)
-        self._order_info_dic.setdefault(instrument_id, []).append(order_info)
+        self._order_info_dic.setdefault(symbol, []).append(order_info)
         # 更新成交信息
         # Order_2_Deal 模式：下单即成交
         if self.trade_mode == BacktestTradeMode.Order_2_Deal:
@@ -101,15 +101,15 @@ class BacktestTraderAgent(TraderAgent):
         # 更新持仓信息
         self._save_pos_status_info(trade_info)
 
-    def _save_pos_status_info(self, trade_info: TradeInfo) -> AccountStatusInfo:
+    def _save_pos_status_info(self, trade_info: TradeInfo):
         """
         根据成交信息保存最新持仓信息
         :param trade_info: 
         :return: 
         """
-        instrument_id = trade_info.instrument_id
-        if instrument_id in self._pos_status_info_dic:
-            pos_status_info_last = self._pos_status_info_dic[instrument_id]
+        symbol = trade_info.instrument_id
+        if symbol in self._pos_status_info_dic:
+            pos_status_info_last = self._pos_status_info_dic[symbol]
             pos_status_info = pos_status_info_last.update_by_trade_info(trade_info)
         else:
             pos_status_info = PosStatusInfo.create_by_trade_info(trade_info)
@@ -117,7 +117,7 @@ class BacktestTraderAgent(TraderAgent):
         trade_date, trade_time, trade_millisec = \
             pos_status_info.trade_date, pos_status_info.trade_time, pos_status_info.trade_millisec
         self.pos_status_info_dic[(trade_date, trade_time, trade_millisec)] = pos_status_info
-        self._pos_status_info_dic[instrument_id] = pos_status_info
+        self._pos_status_info_dic[symbol] = pos_status_info
         # self.c_save_acount_info(pos_status_info)
 
     def _create_account_status_info(self) -> AccountStatusInfo:
@@ -161,7 +161,7 @@ class BacktestTraderAgent(TraderAgent):
         floating_pl_chg = 0
         margin_chg = 0
         floating_pl_cum = 0
-        for instrument_id, pos_status_info in pos_status_info_dic.items():
+        for symbol, pos_status_info in pos_status_info_dic.items():
             curr_margin += pos_status_info.margin
             if pos_status_info.position == 0:
                 close_profit += pos_status_info.floating_pl
@@ -202,7 +202,7 @@ class BacktestTraderAgent(TraderAgent):
         trade_time = md['ts_start'].time()
         trade_millisec = 0
         trade_price = float(md['close'])
-        instrument_id = md['pair']
+        symbol = md['pair']
 
         pos_status_info = pos_status_info_last.create_by_self()
         pos_status_info.cur_price = trade_price
@@ -211,7 +211,7 @@ class BacktestTraderAgent(TraderAgent):
         pos_status_info.trade_millisec = trade_millisec
 
         # 计算 floating_pl margin
-        # instrument_info = config.instrument_info_dic[instrument_id]
+        # instrument_info = config.instrument_info_dic[symbol]
         # multiple = instrument_info['VolumeMultiple']
         # margin_ratio = instrument_info['LongMarginRatio']
         multiple, margin_ratio = 1, 1
@@ -246,9 +246,9 @@ class BacktestTraderAgent(TraderAgent):
             self._account_status_info = self._create_account_status_info()
             self.account_info_list.append(self._account_status_info)
 
-        instrument_id = self.curr_md['pair']
-        if instrument_id in self._pos_status_info_dic:
-            pos_status_info_last = self._pos_status_info_dic[instrument_id]
+        symbol = self.curr_md['pair']
+        if symbol in self._pos_status_info_dic:
+            pos_status_info_last = self._pos_status_info_dic[symbol]
             trade_date = pos_status_info_last.trade_date
             trade_time = pos_status_info_last.trade_time
             # 如果当前K线以及更新则不需再次更新。如果当前K线以及有交易产生，则 pos_info 将会在 _save_pos_status_info 函数中被更新，因此无需再次更新
@@ -256,11 +256,11 @@ class BacktestTraderAgent(TraderAgent):
                 return
             # 说明上一根K线位置已经平仓，下一根K先位置将记录清除
             if pos_status_info_last.position == 0:
-                del self._pos_status_info_dic[instrument_id]
+                del self._pos_status_info_dic[symbol]
             # 根据 md 数据更新 仓位信息
             # pos_status_info = pos_status_info_last.update_by_md(self.curr_md)
             pos_status_info = self._update_pos_status_info_by_md(pos_status_info_last)
-            self._pos_status_info_dic[instrument_id] = pos_status_info
+            self._pos_status_info_dic[symbol] = pos_status_info
 
         # 统计账户信息，更新账户信息
         # account_status_info = self._account_status_info.update_by_pos_status_info(
@@ -269,21 +269,21 @@ class BacktestTraderAgent(TraderAgent):
         self._account_status_info = account_status_info
         self.account_info_list.append(self._account_status_info)
 
-    def open_long(self, instrument_id, price, vol):
-        self._save_order_info(instrument_id, price, vol, Direction.Long, Action.Open)
+    def open_long(self, symbol, price, vol):
+        self._save_order_info(symbol, price, vol, Direction.Long, Action.Open)
 
-    def close_long(self, instrument_id, price, vol):
-        self._save_order_info(instrument_id, price, vol, Direction.Long, Action.Close)
+    def close_long(self, symbol, price, vol):
+        self._save_order_info(symbol, price, vol, Direction.Long, Action.Close)
 
-    def open_short(self, instrument_id, price, vol):
-        self._save_order_info(instrument_id, price, vol, Direction.Short, Action.Open)
+    def open_short(self, symbol, price, vol):
+        self._save_order_info(symbol, price, vol, Direction.Short, Action.Open)
 
-    def close_short(self, instrument_id, price, vol):
-        self._save_order_info(instrument_id, price, vol, Direction.Short, Action.Close)
+    def close_short(self, symbol, price, vol):
+        self._save_order_info(symbol, price, vol, Direction.Short, Action.Close)
 
-    def get_position(self, instrument_id, **kwargs) -> dict:
-        if instrument_id in self._pos_status_info_dic:
-            pos_status_info = self._pos_status_info_dic[instrument_id]
+    def get_position(self, symbol, **kwargs) -> dict:
+        if symbol in self._pos_status_info_dic:
+            pos_status_info = self._pos_status_info_dic[symbol]
             position_date_pos_info_dic = {PositionDateType.History: pos_status_info}
         else:
             position_date_pos_info_dic = None
@@ -316,9 +316,9 @@ class BacktestTraderAgent(TraderAgent):
         except:
             self.logger.exception("release exception")
 
-    def get_order(self, instrument_id) -> OrderInfo:
-        if instrument_id in self._order_info_dic:
-            return self._order_info_dic[instrument_id]
+    def get_order(self, symbol) -> OrderInfo:
+        if symbol in self._order_info_dic:
+            return self._order_info_dic[symbol]
         else:
             return None
 
@@ -328,8 +328,8 @@ class BacktestTraderAgent(TraderAgent):
         return position_date_pos_info_dic
 
 
-@register_realtime_trader_agent
-class RealTimeTraderAgent(TraderAgent):
+@trader_agent(RunMode.Realtime, ExchangeName.BitMex, is_default=False)
+class RealTimeTraderAgent(TraderAgentBase):
     """
     供调用实时交易接口使用
     """
@@ -392,7 +392,7 @@ class RealTimeTraderAgent(TraderAgent):
         result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Sell', orderQty=vol, price=price).result()
         self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
-    def open_short(self, instrument_id, price, vol):
+    def open_short(self, symbol, price, vol):
         """开空单"""
         price_precision, amount_precision = self.symbol_precision_dic[symbol], 1
         if isinstance(price, float):
@@ -406,7 +406,7 @@ class RealTimeTraderAgent(TraderAgent):
         result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Sell', orderQty=vol, price=price).result()
         self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
-    def close_short(self, instrument_id, price, vol):
+    def close_short(self, symbol, price, vol):
         """平空单"""
         price_precision, amount_precision = self.symbol_precision_dic[symbol], 1
         if isinstance(price, float):
@@ -420,18 +420,16 @@ class RealTimeTraderAgent(TraderAgent):
         result, _ = self.trader_api.Order.Order_new(symbol=symbol, side='Buy', orderQty=vol, price=price).result()
         self._datetime_last_rtn_trade_dic[symbol] = datetime.now()
 
-    def get_position(self, instrument_id, force_refresh=False) -> dict:
+    def get_position(self, symbol, force_refresh=False) -> dict:
         """
-        instrument_id（相当于 symbol )
+        symbol（相当于 symbol )
         symbol ethusdt, btcusdt
         currency eth, btc
-        :param instrument_id:
+        :param symbol:
         :param force_refresh:
         :return:
         """
-        symbol = instrument_id
         currency = self.get_currency(symbol)
-        # currency = instrument_id
         # self.logger.debug('symbol:%s force_refresh=%s', symbol, force_refresh)
         position_date_inv_pos_dic = self.get_balance(currency=currency, force_refresh=force_refresh)
         return position_date_inv_pos_dic
@@ -511,10 +509,10 @@ class RealTimeTraderAgent(TraderAgent):
     def datetime_last_send_order_dic(self) -> dict:
         raise NotImplementedError()
 
-    def get_order(self, instrument_id, states='submitted') -> list:
+    def get_order(self, symbol, states='submitted') -> list:
         """
 
-        :param instrument_id:
+        :param symbol:
         :param states:
         :return: 格式如下：
         [{'id': 603164274, 'symbol': 'ethusdt', 'account-id': 909325, 'amount': '4.134700000000000000',
@@ -524,12 +522,12 @@ class RealTimeTraderAgent(TraderAgent):
 'state': 'filled', 'canceled-at': 0},
  ... ]
         """
-        symbol = instrument_id
+        symbol = symbol
         ret_data = self.trader_api.get_orders_info(symbol=symbol, states=states)
         return ret_data['data']
 
-    def cancel_order(self, instrument_id):
-        symbol = instrument_id
+    def cancel_order(self, symbol):
+        symbol = symbol
         order_list = self.get_order(symbol)
         order_id_list = [data['id'] for data in order_list]
         return self.trader_api.batchcancel_order(order_id_list)
@@ -538,20 +536,23 @@ class RealTimeTraderAgent(TraderAgent):
         pass
 
 
-if __name__ == "__main__":
-    import time
-
+def _test_only():
     # 测试交易 下单接口及撤单接口
     # symbol, vol, price = 'ocnusdt', 1, 0.00004611  # OCN/USDT
     symbol, vol, price = 'eosusdt', 1.0251, 4.1234  # OCN/USDT
 
     td = RealTimeTraderAgent(stg_run_id=1, run_mode_params={})
     td.open_long(symbol=symbol, price=price, vol=vol)
-    order_dic_list = td.get_order(instrument_id=symbol)
+    order_dic_list = td.get_order(symbol=symbol)
     print('after open_long', order_dic_list)
     assert len(order_dic_list) == 1
-    td.cancel_order(instrument_id=symbol)
+    td.cancel_order(symbol=symbol)
     time.sleep(1)
-    order_dic_list = td.get_order(instrument_id=symbol)
+    order_dic_list = td.get_order(symbol=symbol)
     print('after cancel', order_dic_list)
     assert len(order_dic_list) == 0
+
+
+if __name__ == "__main__":
+    import time
+    _test_only()

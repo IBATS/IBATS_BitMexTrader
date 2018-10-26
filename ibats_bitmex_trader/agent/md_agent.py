@@ -10,15 +10,23 @@
 import json
 import time
 from queue import Queue
-from ibats_trader.md import MdAgentBase, register_backtest_md_agent, register_realtime_md_agent
+from ibats_common.md import MdAgentBase, md_agent
 from ibats_common.utils.mess import bytes_2_str
-from ibats_common.common import PeriodType
-from ibats_bitmex_trader.backend import engine_md
-from ibats_common.utils.redis import get_redis, get_channel
-from ibats_bitmex_trader.backend.orm import MDMin1
+from ibats_common.common import PeriodType, RunMode, ExchangeName
+from ibats_bitmex_trader.backend import engine_md, get_redis
+from ibats_common.utils.redis import get_channel
+from ibats_bitmex_feeder.backend.orm import MDMin1, MDMin5, MDHour1, MDDaily
 from ibats_common.utils.db import with_db_session
 import pandas as pd
 from ibats_bitmex_trader.config import config
+
+
+period_model_dic = {
+    PeriodType.Min1: MDMin1,
+    PeriodType.Min5: MDMin5,
+    PeriodType.Hour1: MDHour1,
+    PeriodType.Day1: MDDaily,
+}
 
 
 class MdAgentPub(MdAgentBase):
@@ -41,51 +49,51 @@ class MdAgentPub(MdAgentBase):
             ret_data = {'md_df': None, 'datetime_key': 'timestamp'}
             return ret_data
 
-        if self.md_period == PeriodType.Min1:
-            # 将sql 语句形势改成由 sqlalchemy 进行sql 拼装方式
-            # sql_str = """select * from md_min_1
-            #     where InstrumentID in ('j1801') and tradingday>='2017-08-14'
-            #     order by ActionDay, ActionTime, ActionMillisec limit 200"""
-            # sql_str = """SELECT * FROM md_min_1
-            # WHERE InstrumentID IN (%s) %s
-            # ORDER BY ActionDay DESC, ActionTime DESC %s"""
-            with with_db_session(engine_md) as session:
-                query = session.query(
-                    MDMin1.symbol.label('pair'), MDMin1.ts_start.label('ts_start'),
-                    MDMin1.open.label('open'), MDMin1.high.label('high'),
-                    MDMin1.low.label('low'), MDMin1.close.label('close'),
-                    MDMin1.vol.label('vol'), MDMin1.amount.label('amount'), MDMin1.count.label('count')
-                ).filter(
-                    MDMin1.symbol.in_(self.instrument_id_set)
-                ).order_by(MDMin1.ts_start.desc())
-                # 设置参数
-                params = list(self.instrument_id_set)
-                # date_from 起始日期
-                if date_from is None:
-                    date_from = self.init_md_date_from
-                if date_from is not None:
-                    # qry_str_date_from = " and tradingday>='%s'" % date_from
-                    query = query.filter(MDMin1.ts_start >= date_from)
-                    params.append(date_from)
-                # date_to 截止日期
-                if date_to is None:
-                    date_to = self.init_md_date_to
-                if date_to is not None:
-                    # qry_str_date_to = " and tradingday<='%s'" % date_to
-                    query = query.filter(MDMin1.ts_start <= date_to)
-                    params.append(date_to)
-
-                # load_limit 最大记录数
-                if load_md_count is None:
-                    load_md_count = self.init_load_md_count
-                if load_md_count is not None and load_md_count > 0:
-                    qry_str_limit = " limit %d" % load_md_count
-                    query = query.limite(load_md_count)
-                    params.append(load_md_count)
-
-                sql_str = str(query)
-        else:
+        if self.md_period not in period_model_dic:
             raise ValueError('%s error' % self.md_period)
+
+        # 将sql 语句形势改成由 sqlalchemy 进行sql 拼装方式
+        # sql_str = """select * from md_min_1
+        #     where InstrumentID in ('j1801') and tradingday>='2017-08-14'
+        #     order by ActionDay, ActionTime, ActionMillisec limit 200"""
+        # sql_str = """SELECT * FROM md_min_1
+        # WHERE InstrumentID IN (%s) %s
+        # ORDER BY ActionDay DESC, ActionTime DESC %s"""
+        model = period_model_dic[self.md_period]
+        with with_db_session(engine_md) as session:
+            query = session.query(
+                model.symbol, model.timestamp,
+                model.open, model.high, model.low, model.close,
+                model.volume, model.turnover, model.trades
+            ).filter(
+                model.symbol.in_(self.instrument_id_set)
+            ).order_by(model.timestamp.desc())
+            # 设置参数
+            params = list(self.instrument_id_set)
+            # date_from 起始日期
+            if date_from is None:
+                date_from = self.init_md_date_from
+            if date_from is not None:
+                # qry_str_date_from = " and tradingday>='%s'" % date_from
+                query = query.filter(model.timestamp >= date_from)
+                params.append(date_from)
+            # date_to 截止日期
+            if date_to is None:
+                date_to = self.init_md_date_to
+            if date_to is not None:
+                # qry_str_date_to = " and tradingday<='%s'" % date_to
+                query = query.filter(model.timestamp <= date_to)
+                params.append(date_to)
+
+            # load_limit 最大记录数
+            if load_md_count is None:
+                load_md_count = self.init_load_md_count
+            if load_md_count is not None and load_md_count > 0:
+                # qry_str_limit = " limit %d" % load_md_count
+                query = query.limite(load_md_count)
+                params.append(load_md_count)
+
+            sql_str = str(query)
 
         # 合约列表
         # qry_str_inst_list = "'" + "', '".join(self.instrument_id_set) + "'"
@@ -95,11 +103,11 @@ class MdAgentPub(MdAgentBase):
         # 加载历史数据
         md_df = pd.read_sql(sql_str, engine_md, params=params)
         # self.md_df = md_df
-        ret_data = {'md_df': md_df, 'datetime_key': 'ts_start'}
+        ret_data = {'md_df': md_df, 'datetime_key': 'timestamp'}
         return ret_data
 
 
-@register_realtime_md_agent
+@md_agent(RunMode.Realtime, ExchangeName.BitMex, is_default=False)
 class MdAgentRealtime(MdAgentPub):
 
     def __init__(self, instrument_id_set, md_period: PeriodType, name=None, init_load_md_count=None,
@@ -168,12 +176,13 @@ class MdAgentRealtime(MdAgentPub):
         return md
 
 
-@register_backtest_md_agent
+@md_agent(RunMode.Backtest, ExchangeName.BitMex, is_default=False)
 class MdAgentBacktest(MdAgentPub):
 
-    def __init__(self, instrument_id_set, md_period: PeriodType, name=None, init_load_md_count=None,
+    def __init__(self, instrument_id_set, md_period: PeriodType, init_load_md_count=None,
                  init_md_date_from=None, init_md_date_to=None, **kwargs):
-        super().__init__(instrument_id_set, md_period, name=name, init_load_md_count=init_load_md_count,
+        super().__init__(instrument_id_set, md_period,
+                         name=ExchangeName.BitMex, init_load_md_count=init_load_md_count,
                          init_md_date_from=init_md_date_from, init_md_date_to=init_md_date_to, **kwargs)
         self.timeout = 1
 
