@@ -4,9 +4,9 @@ Created on 2017/6/9
 @author: MG
 """
 import logging
-from logging.config import dictConfig
 from ibats_common.config import ConfigBase as ConBase
 from ibats_common.common import ExchangeName
+
 logger = logging.getLogger()
 
 
@@ -36,11 +36,10 @@ class ConfigBase(ConBase):
     UPDATE_OR_INSERT_PER_ACTION = False
 
 
-# 开发配置（SIMNOW MD + Trade）
 config = ConfigBase()
 
 
-def update_config(config_update: ConfigBase):
+def update_config(config_new: ConfigBase):
     global config
-    config = config_update
-    logger.info('更新默认配置信息 %s < %s', ConfigBase, config_update)
+    config = config_new
+    logger.info('更新默认配置信息 %s < %s', ConfigBase, config_new.__class__)
