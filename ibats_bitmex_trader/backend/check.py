@@ -7,13 +7,14 @@
 @contact : mmmaaaggg@163.com
 @desc    : 用于对系统配置的环境进行检测，检查是否环境可用，包括mysql、redis等
 """
-from ibats_common.common import PeriodType
+from ibats_common.common import PeriodType, ExchangeName
 import threading
 import json
 import time
 import logging
 from ibats_common.utils.mess import bytes_2_str
-from ibats_common.utils.redis import get_redis, get_channel
+from ibats_common.utils.redis import get_channel
+from ibats_bitmex_trader.backend import get_redis
 logger = logging.getLogger()
 _signal = {}
 
@@ -37,7 +38,7 @@ def check_redis():
     # channel_header = Config.REDIS_CHANNEL[PeriodType.Tick]
     instrument_id = 'rb1805'
     # channel = channel_header + 'test.' + instrument_id
-    channel = get_channel('huobi', PeriodType.Year1, instrument_id)
+    channel = get_channel(ExchangeName.BitMex.name, PeriodType.Year1, instrument_id)
     _signal['redis'] = False
 
     timer_t = threading.Thread(target=_timer, args=(channel,))

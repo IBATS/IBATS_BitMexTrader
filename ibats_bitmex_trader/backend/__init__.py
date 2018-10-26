@@ -8,8 +8,13 @@
 @desc    : 
 """
 from sqlalchemy import create_engine
+from ibats_common.utils.redis import get_redis as get_redis_base
 from ibats_bitmex_trader.config import config
 
 engines = {key: create_engine(url) for key, url in config.DB_URL_DIC.items()}
 
 engine_md = engines[config.DB_SCHEMA_MD]
+
+
+def get_redis():
+    return get_redis_base(config.REDIS_INFO_DIC['REDIS_HOST'], config.REDIS_INFO_DIC['REDIS_PORT'])
