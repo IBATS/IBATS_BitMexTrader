@@ -62,9 +62,10 @@ class MdAgentPub(MdAgentBase):
         model = period_model_dic[self.md_period]
         with with_db_session(engine_md) as session:
             query = session.query(
-                model.symbol, model.timestamp,
-                model.open, model.high, model.low, model.close,
-                model.volume, model.turnover, model.trades
+                model.symbol.label('symbol'), model.timestamp.label('timestamp'),
+                model.open.label('open'), model.high.label('high'),
+                model.low.label('low'), model.close.label('close'),
+                model.volume.label('volume'), model.turnover.label('turnover'), model.trades.label('trades')
             ).filter(
                 model.symbol.in_(self.instrument_id_set)
             ).order_by(model.timestamp.desc())
@@ -179,10 +180,10 @@ class MdAgentRealtime(MdAgentPub):
 @md_agent(RunMode.Backtest, ExchangeName.BitMex, is_default=False)
 class MdAgentBacktest(MdAgentPub):
 
-    def __init__(self, instrument_id_set, md_period: PeriodType, init_load_md_count=None,
+    def __init__(self, instrument_id_set, md_period: PeriodType, name=None, init_load_md_count=None,
                  init_md_date_from=None, init_md_date_to=None, **kwargs):
         super().__init__(instrument_id_set, md_period,
-                         name=ExchangeName.BitMex, init_load_md_count=init_load_md_count,
+                         name=name, init_load_md_count=init_load_md_count,
                          init_md_date_from=init_md_date_from, init_md_date_to=init_md_date_to, **kwargs)
         self.timeout = 1
 
