@@ -69,10 +69,10 @@ class BacktestTraderAgent(TraderAgentBase):
         pass
 
     def _save_order_info(self, symbol, price: float, vol: int, direction: Direction, action: Action):
-        order_date = self.curr_md['ts_start'].date()
+        order_date = self.curr_md['timestamp'].date()
         order_info = OrderInfo(stg_run_id=self.stg_run_id,
                                order_date=order_date,
-                               order_time=self.curr_md['ts_start'].time(),
+                               order_time=self.curr_md['timestamp'].time(),
                                order_millisec=0,
                                direction=int(direction),
                                action=int(action),
@@ -123,8 +123,8 @@ class BacktestTraderAgent(TraderAgentBase):
 
     def _create_account_status_info(self) -> AccountStatusInfo:
         stg_run_id, init_cash, md = self.stg_run_id, self.init_cash, self.curr_md
-        trade_date = md['ts_start'].date()
-        trade_time = md['ts_start'].time()
+        trade_date = md['timestamp'].date()
+        trade_time = md['timestamp'].time()
         trade_millisec = 0
         # trade_price = float(self.curr_md['close'])
         acc_status_info = AccountStatusInfo(stg_run_id=stg_run_id,
@@ -151,8 +151,8 @@ class BacktestTraderAgent(TraderAgentBase):
         # trade_date_last, trade_time_last, trade_millisec_last = \
         #     account_status_info.trade_date, account_status_info.trade_time, account_status_info.trade_millisec
         # 更新日期、时间
-        trade_date = md['ts_start'].date()
-        trade_time = md['ts_start'].time()
+        trade_date = md['timestamp'].date()
+        trade_time = md['timestamp'].time()
         trade_millisec = 0
 
         available_cash_chg = 0
@@ -199,8 +199,8 @@ class BacktestTraderAgent(TraderAgentBase):
     def _update_pos_status_info_by_md(self, pos_status_info_last) -> PosStatusInfo:
         """创建新的对象，根据 trade_info 更新相关信息"""
         md = self.curr_md
-        trade_date = md['ts_start'].date()
-        trade_time = md['ts_start'].time()
+        trade_date = md['timestamp'].date()
+        trade_time = md['timestamp'].time()
         trade_millisec = 0
         trade_price = float(md['close'])
         symbol = md['pair']
@@ -253,7 +253,7 @@ class BacktestTraderAgent(TraderAgentBase):
             trade_date = pos_status_info_last.trade_date
             trade_time = pos_status_info_last.trade_time
             # 如果当前K线以及更新则不需再次更新。如果当前K线以及有交易产生，则 pos_info 将会在 _save_pos_status_info 函数中被更新，因此无需再次更新
-            if trade_date == self.curr_md['ts_start'].date() and trade_time == self.curr_md['ts_start'].time():
+            if trade_date == self.curr_md['timestamp'].date() and trade_time == self.curr_md['timestamp'].time():
                 return
             # 说明上一根K线位置已经平仓，下一根K先位置将记录清除
             if pos_status_info_last.position == 0:
