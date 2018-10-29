@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, date
 from ibats_common.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
 from ibats_bitmex_trader.config import config
 from ibats_common.utils.db import with_db_session, get_db_session
-from ibats_common.backend import engine_ibats
+from ibats_common.backend import engines
 from ibats_common.common import Direction, Action, BacktestTradeMode, PositionDateType, RunMode, ExchangeName
 from ibats_common.trade import TraderAgentBase, trader_agent
 from ibats_bitmex_feeder.backend import engine_md
@@ -19,6 +19,7 @@ from collections import defaultdict
 from enum import Enum
 import math
 
+engine_ibats = engines.engine_ibats
 logger = logging.getLogger()
 
 
