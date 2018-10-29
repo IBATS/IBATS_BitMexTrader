@@ -4,7 +4,7 @@ Created on 2017/6/9
 @author: MG
 """
 import logging
-from ibats_common.config import ConfigBase as ConBase
+from ibats_common.config import ConfigBase as ConBase, update_db_config
 from ibats_common.common import ExchangeName
 
 logger = logging.getLogger()
@@ -43,3 +43,4 @@ def update_config(config_new: ConfigBase):
     global config
     config = config_new
     logger.info('更新默认配置信息 %s < %s', ConfigBase, config_new.__class__)
+    update_db_config(config.DB_URL_DIC)
