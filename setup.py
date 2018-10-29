@@ -13,13 +13,13 @@ with open("README.md", "r", encoding='utf-8') as rm:
     long_description = rm.read()
 
 setup(name='IBATS_BitMex_Trader',
-      version='0.1.4',
+      version='0.1.5',
       description='作为IBATS架构的 Trader 端，用于连接BitMex进行相应的交易及账户信息获取等动作',
       long_description=long_description,
       long_description_content_type='text/markdown',
       author='MG',
       author_email='mmmaaaggg@163.com',
-      url='https://github.com/mmmaaaggg/IBATS_Trader',
+      url='https://github.com/IBATS/IBATS_BitMexTrader',
       packages=find_packages(),
       python_requires='>=3.6',
       classifiers=(
