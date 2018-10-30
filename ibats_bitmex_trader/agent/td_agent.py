@@ -203,7 +203,7 @@ class BacktestTraderAgent(TraderAgentBase):
         trade_time = md['timestamp'].time()
         trade_millisec = 0
         trade_price = float(md['close'])
-        symbol = md['pair']
+        symbol = md['symbol']
 
         pos_status_info = pos_status_info_last.create_by_self()
         pos_status_info.cur_price = trade_price
@@ -247,7 +247,7 @@ class BacktestTraderAgent(TraderAgentBase):
             self._account_status_info = self._create_account_status_info()
             self.account_info_list.append(self._account_status_info)
 
-        symbol = self.curr_md['pair']
+        symbol = self.curr_md['symbol']
         if symbol in self._pos_status_info_dic:
             pos_status_info_last = self._pos_status_info_dic[symbol]
             trade_date = pos_status_info_last.trade_date
