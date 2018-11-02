@@ -104,7 +104,7 @@ class MdAgentPub(MdAgentBase):
         # 加载历史数据
         md_df = pd.read_sql(sql_str, engine_md, params=params)
         # self.md_df = md_df
-        ret_data = {'md_df': md_df, 'datetime_key': 'timestamp'}
+        ret_data = {'md_df': md_df, 'datetime_key': 'timestamp', 'symbol_key': 'symbol', 'close_key': 'close'}
         return ret_data
 
 
