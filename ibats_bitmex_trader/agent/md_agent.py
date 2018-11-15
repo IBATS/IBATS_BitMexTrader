@@ -16,10 +16,9 @@ from ibats_common.common import PeriodType, RunMode, ExchangeName
 from ibats_bitmex_trader.backend import engine_md, get_redis
 from ibats_common.utils.redis import get_channel
 from ibats_bitmex_feeder.backend.orm import MDMin1, MDMin5, MDHour1, MDDaily
-from ibats_common.utils.db import with_db_session
+from ibats_common.utils.db import with_db_session, get_db_session
 import pandas as pd
 from ibats_bitmex_trader.config import config
-
 
 period_model_dic = {
     PeriodType.Min1: MDMin1,
@@ -31,7 +30,7 @@ period_model_dic = {
 
 class MdAgentPub(MdAgentBase):
 
-    def load_history(self, date_from=None, date_to=None, load_md_count=None)->(pd.DataFrame, dict):
+    def load_history(self, date_from=None, date_to=None, load_md_count=None) -> (pd.DataFrame, dict):
         """
         从mysql中加载历史数据
         实时行情推送时进行合并后供数据分析使用
@@ -61,7 +60,7 @@ class MdAgentPub(MdAgentBase):
         # ORDER BY ActionDay DESC, ActionTime DESC %s"""
         model = period_model_dic[self.md_period]
         with with_db_session(engine_md) as session:
-            query = session.query(
+            sub_query = session.query(
                 model.symbol.label('symbol'), model.timestamp.label('timestamp'),
                 model.open.label('open'), model.high.label('high'),
                 model.low.label('low'), model.close.label('close'),
@@ -76,14 +75,14 @@ class MdAgentPub(MdAgentBase):
                 date_from = self.init_md_date_from
             if date_from is not None:
                 # qry_str_date_from = " and tradingday>='%s'" % date_from
-                query = query.filter(model.timestamp >= date_from)
+                sub_query = sub_query.filter(model.timestamp >= date_from)
                 params.append(date_from)
             # date_to 截止日期
             if date_to is None:
                 date_to = self.init_md_date_to
             if date_to is not None:
                 # qry_str_date_to = " and tradingday<='%s'" % date_to
-                query = query.filter(model.timestamp <= date_to)
+                sub_query = sub_query.filter(model.timestamp <= date_to)
                 params.append(date_to)
 
             # load_limit 最大记录数
@@ -91,9 +90,17 @@ class MdAgentPub(MdAgentBase):
                 load_md_count = self.init_load_md_count
             if load_md_count is not None and load_md_count > 0:
                 # qry_str_limit = " limit %d" % load_md_count
-                query = query.limite(load_md_count)
+                sub_query = sub_query.limite(load_md_count)
                 params.append(load_md_count)
 
+            sub_query = sub_query.subquery('t')
+            query = session.query(
+                sub_query.c.symbol.label('symbol'), sub_query.c.timestamp.label('timestamp'),
+                sub_query.c.open.label('open'), sub_query.c.high.label('high'),
+                sub_query.c.low.label('low'), sub_query.c.close.label('close'),
+                sub_query.c.volume.label('volume'), sub_query.c.turnover.label('turnover'),
+                sub_query.c.trades.label('trades')
+            ).order_by(sub_query.c.timestamp)
             sql_str = str(query)
 
         # 合约列表
@@ -102,6 +109,7 @@ class MdAgentPub(MdAgentBase):
         # qry_sql_str = sql_str % (qry_str_inst_list, qry_str_date_from + qry_str_date_to, qry_str_limit)
 
         # 加载历史数据
+        self.logger.debug("%s on:\n%s", params, sql_str)
         md_df = pd.read_sql(sql_str, engine_md, params=params)
         # self.md_df = md_df
         ret_data = {'md_df': md_df, 'datetime_key': 'timestamp', 'symbol_key': 'symbol', 'close_key': 'close'}
