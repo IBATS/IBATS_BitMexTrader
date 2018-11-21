@@ -6,7 +6,6 @@ Created on 2017/10/3
 import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta, date
-from ibats_common.backend.orm import OrderInfo, TradeInfo, PosStatusInfo, AccountStatusInfo
 from ibats_bitmex_trader.config import config
 from ibats_common.utils.db import with_db_session, get_db_session
 from ibats_common.backend import engines
@@ -51,8 +50,8 @@ class RealTimeTraderAgent(TraderAgentBase):
     供调用实时交易接口使用
     """
 
-    def __init__(self, stg_run_id, run_mode_params: dict):
-        super().__init__(stg_run_id, run_mode_params)
+    def __init__(self, stg_run_id, **run_mode_params):
+        super().__init__(stg_run_id, **run_mode_params)
         self.trader_api = bitmex(test=config.TEST_NET,
                                  api_key=config.EXCHANGE_PUBLIC_KEY, api_secret=config.EXCHANGE_SECRET_KEY)
         self.currency_balance_dic = {}

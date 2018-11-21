@@ -66,10 +66,10 @@ class MdAgentPub(MdAgentBase):
                 model.low.label('low'), model.close.label('close'),
                 model.volume.label('volume'), model.turnover.label('turnover'), model.trades.label('trades')
             ).filter(
-                model.symbol.in_(self.instrument_id_set)
+                model.symbol.in_(self.instrument_id_list)
             ).order_by(model.timestamp.desc())
             # 设置参数
-            params = list(self.instrument_id_set)
+            params = list(self.instrument_id_list)
             # date_from 起始日期
             if date_from is None:
                 date_from = self.init_md_date_from
@@ -104,7 +104,7 @@ class MdAgentPub(MdAgentBase):
             sql_str = str(query)
 
         # 合约列表
-        # qry_str_inst_list = "'" + "', '".join(self.instrument_id_set) + "'"
+        # qry_str_inst_list = "'" + "', '".join(self.instrument_id_list) + "'"
         # 拼接sql
         # qry_sql_str = sql_str % (qry_str_inst_list, qry_str_date_from + qry_str_date_to, qry_str_limit)
 
@@ -119,10 +119,8 @@ class MdAgentPub(MdAgentBase):
 @md_agent(RunMode.Realtime, ExchangeName.BitMex, is_default=False)
 class MdAgentRealtime(MdAgentPub):
 
-    def __init__(self, instrument_id_set, md_period: PeriodType, name=None, init_load_md_count=None,
-                 init_md_date_from=None, init_md_date_to=None, **kwargs):
-        super().__init__(instrument_id_set, md_period, name=name, init_load_md_count=init_load_md_count,
-                         init_md_date_from=init_md_date_from, init_md_date_to=init_md_date_to, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.pub_sub = None
         self.md_queue = Queue()
 
@@ -135,15 +133,15 @@ class MdAgentRealtime(MdAgentPub):
         """释放channel资源"""
         self.pub_sub.close()
 
-    def subscribe(self, instrument_id_set=None):
+    def subscribe(self, instrument_id_list=None):
         """订阅合约"""
-        super().subscribe(instrument_id_set)
-        if instrument_id_set is None:
-            instrument_id_set = self.instrument_id_set
+        super().subscribe(instrument_id_list)
+        if instrument_id_list is None:
+            instrument_id_list = self.instrument_id_list
         # channel_head = Config.REDIS_CHANNEL[self.md_period]
-        # channel_list = [channel_head + instrument_id for instrument_id in instrument_id_set]
+        # channel_list = [channel_head + instrument_id for instrument_id in instrument_id_list]
         channel_list = [get_channel(config.MARKET_NAME, self.md_period, instrument_id)
-                        for instrument_id in instrument_id_set]
+                        for instrument_id in instrument_id_list]
         self.pub_sub.psubscribe(*channel_list)
 
     def run(self):
@@ -162,19 +160,17 @@ class MdAgentRealtime(MdAgentPub):
                 else:
                     break
 
-    def unsubscribe(self, instrument_id_set):
+    def unsubscribe(self, instrument_id_list):
         """退订合约"""
-        if instrument_id_set is None:
-            tmp_set = self.instrument_id_set
-            super().unsubscribe(instrument_id_set)
-            instrument_id_set = tmp_set
-        else:
-            super().unsubscribe(instrument_id_set)
+        if instrument_id_list is None:
+            instrument_id_list = self.instrument_id_list
+
+        super().unsubscribe(instrument_id_list)
 
         # channel_head = config.REDIS_CHANNEL[self.md_period]
-        # channel_list = [channel_head + instrument_id for instrument_id in instrument_id_set]
+        # channel_list = [channel_head + instrument_id for instrument_id in instrument_id_list]
         channel_list = [get_channel(config.MARKET_NAME, self.md_period, instrument_id)
-                        for instrument_id in instrument_id_set]
+                        for instrument_id in instrument_id_list]
         if self.pub_sub is not None:  # 在回测模式下有可能不进行 connect 调用以及 subscribe 订阅，因此，没有 pub_sub 实例
             self.pub_sub.punsubscribe(*channel_list)
 
@@ -188,12 +184,12 @@ class MdAgentRealtime(MdAgentPub):
 @md_agent(RunMode.Backtest, ExchangeName.BitMex, is_default=False)
 class MdAgentBacktest(MdAgentPub):
 
-    def __init__(self, instrument_id_set, md_period: PeriodType, name=None, init_load_md_count=None,
-                 init_md_date_from=None, init_md_date_to=None, **kwargs):
-        super().__init__(instrument_id_set, md_period,
-                         name=name, init_load_md_count=init_load_md_count,
-                         init_md_date_from=init_md_date_from, init_md_date_to=init_md_date_to, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.timeout = 1
+        self.timestamp_key = 'timestamp'
+        self.symbol_key = 'symbol'
+        self.close_key = 'close'
 
     def connect(self):
         """链接redis、初始化历史数据"""
