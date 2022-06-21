@@ -43,7 +43,7 @@ setup(name='IBATS_BitMex_Trader',
           'bitmex-ws',
           'IBATS_BitMex_Feeder',
           'mysqlclient>=1.3.8',
-          'numpy==1.14.4',
+          'numpy==1.22.0',
           'pandas==0.23.0',
           'SQLAlchemy==1.2.8',
       ])
