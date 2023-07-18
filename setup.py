@@ -45,5 +45,5 @@ setup(name='IBATS_BitMex_Trader',
           'mysqlclient>=1.3.8',
           'numpy==1.14.4',
           'pandas==0.23.0',
-          'SQLAlchemy==1.2.8',
+          'SQLAlchemy==1.3.0',
       ])
